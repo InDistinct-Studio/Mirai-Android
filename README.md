@@ -24,7 +24,7 @@
 - Add your dependency in your app or feature module as below
 ```
 	dependencies {
-		implementation 'com.github.Seen-Digital:mirai-android:<version>'
+		implementation 'com.github.InDistinct-Studio:mirai-android:<version>'
 	}
 ```
 
