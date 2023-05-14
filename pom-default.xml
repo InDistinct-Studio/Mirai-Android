@@ -33,7 +33,7 @@
     <dependency>
       <groupId>com.google.mlkit</groupId>
       <artifactId>text-recognition</artifactId>
-      <version>16.0.0-beta4</version>
+      <version>16.0.0-beta6</version>
       <scope>runtime</scope>
     </dependency>
     <dependency>
