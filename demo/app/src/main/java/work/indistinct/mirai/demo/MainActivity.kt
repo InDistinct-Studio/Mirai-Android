@@ -1,24 +1,24 @@
 package work.indistinct.mirai.demo
 
-import work.indistinct.mirai.CardImage
-import work.indistinct.mirai.IDCardResult
-import work.indistinct.mirai.Mirai
-import work.indistinct.mirai.face.FaceDetectionResult
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
-import android.widget.Button
-import android.widget.Switch
-import android.widget.TextView
+import android.view.MotionEvent
+import android.view.View
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
-import android.widget.Toast
-import kotlinx.android.synthetic.main.activity_main.*
+import work.indistinct.mirai.CardImage
+import work.indistinct.mirai.IDCardResult
+import work.indistinct.mirai.Mirai
+import work.indistinct.mirai.face.FaceDetectionResult
+import work.indistinct.mirai.face.FaceScreeningStage
+import work.indistinct.mirai.face.FaceScreeningState
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.abs
@@ -33,12 +33,16 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
     lateinit var confidenceText: TextView
     lateinit var faceText: TextView
     lateinit var faceDetectionSwitch: Switch
+    lateinit var autoCaptFaceSwitch: Switch
+    lateinit var previewView: PreviewView
+    lateinit var boundingBoxOverlay: BoundingBoxOverlay
+    lateinit var imageView: ImageView
 
     private var preview: Preview? = null
     private var imageCapture: ImageCapture? = null
     private var imageAnalyzer: ImageAnalysis? = null
     private var camera: Camera? = null
-    private var lensFacing: Int = CameraSelector.LENS_FACING_BACK
+    private var lensFacing: Int = CameraSelector.LENS_FACING_FRONT
     private var cameraProvider: ProcessCameraProvider? = null
 
     private var previewWidth: Int = 1
@@ -48,6 +52,9 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
     private var imgProxyRotationDegree: Int = 0
     private lateinit var cameraExecutor: ExecutorService
 
+    private var correctCount: Int = 0
+    private var faceScreeningState: FaceScreeningState = FaceScreeningState()
+
     companion object {
         private const val RATIO_4_3_VALUE = 4.0 / 3.0
         private const val RATIO_16_9_VALUE = 16.0 / 9.0
@@ -56,16 +63,31 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        Mirai.init(this,"ajMbRHTFPtUo9RzpSAMd", this)
-
+        Mirai.init(this,"NDIfT5TihAj7wVZi178O", this)
+        imageView = findViewById(R.id.imageView)
+        boundingBoxOverlay = findViewById(R.id.boundingBoxOverlay)
+        previewView = findViewById(R.id.previewView)
         resultText = findViewById(R.id.resultTextView)
         confidenceText = findViewById(R.id.confidenceTextView)
         swapCameraButton = findViewById(R.id.swapCameraButton)
         faceText = findViewById(R.id.faceTextView)
         faceDetectionSwitch = findViewById(R.id.faceDetectionSwitch)
+        autoCaptFaceSwitch = findViewById(R.id.autoCapFaceSwitch)
         swapCameraButton.setOnClickListener {
             swapCamera()
         }
+
+        imageView.setOnTouchListener(object : View.OnTouchListener {
+            override fun onTouch(v: View?, event: MotionEvent?): Boolean {
+                imageView.setImageBitmap(null)
+                correctCount = 0
+                faceScreeningState = FaceScreeningState()
+                cameraProvider?.unbindAll()
+                bindCameraUseCases()
+
+                return false
+            }
+        })
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -99,8 +121,13 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
     private fun bindCameraUseCases() {
         val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
+//        val metrics = DisplayMetrics().also { previewView.display.getRealMetrics(it) }
+
+//        val screenAspectRatio = aspectRatio(metrics.widthPixels, metrics.heightPixels)
         previewView.scaleType = PreviewView.ScaleType.FIT_START
         val rotation = previewView.display.rotation
+
+//        val previewChild = previewView.getChildAt(0)
         previewWidth = (previewView.width * previewView.scaleX).toInt()
         previewHeight = (previewView.height * previewView.scaleY).toInt()
         val screenAspectRatio = aspectRatio(previewWidth, previewHeight)
@@ -131,11 +158,20 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
                         imgProxyRotationDegree = imageInfo.rotationDegrees
                         val card = CardImage(this.image!!, imageInfo.rotationDegrees)
                         Mirai.scanIDCard(card) { result ->
-//                            if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
                             if (faceDetectionSwitch.isChecked) {
-                                Mirai.checkFace(result) { faceResult ->
-                                    this@MainActivity.displayResult(result, faceResult)
+                                faceScreeningState.stage = FaceScreeningStage.FRONT
+                                Mirai.oneStageCheckFace(result, faceScreeningState) { faceState ->
+                                    this@MainActivity.displayResult(result, faceScreeningState.curFaceDetectionResult)
                                     imageProxy.close()
+                                    faceScreeningState = faceState
+                                    if (faceScreeningState.stage == FaceScreeningStage.FAILED) {
+                                        faceText.text = "Face screening failed!"
+                                        cameraProvider?.unbindAll()
+                                    }
+                                    if (faceScreeningState.stage == FaceScreeningStage.SUCCESS && autoCaptFaceSwitch.isChecked) {
+                                        imageView.setImageBitmap(faceScreeningState.results[0].faceBitmap)
+                                        cameraProvider?.unbindAll()
+                                    }
                                 }
                             } else {
                                 this@MainActivity.displayResult(result, null)
@@ -175,8 +211,8 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
             resultText.text = errorMessage
         }
         boundingBoxOverlay.post{boundingBoxOverlay.clearBounds()}
-        val bboxes: MutableList<Rect> = mutableListOf()
-        val faceBBoxes: MutableList<Rect> = mutableListOf()
+        val greenBoxes: MutableList<Rect> = mutableListOf()
+        val redBoxes: MutableList<Rect> = mutableListOf()
         var mlBBox: Rect? = null
         result.run {
             // fullImage is always available.
@@ -208,34 +244,50 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
                 resultText.text = "TEXTS -> NULL, isFrontside -> $isFrontSide"
             }
             if (idBBoxes != null) {
-                bboxes.addAll(idBBoxes!!)
+                if (isFrontCardFull == true && confidence > 0.5 && classificationResult!!.confidence > 0.7){
+                    greenBoxes.addAll(idBBoxes!!)
+                } else {
+                    redBoxes.addAll(idBBoxes!!)
+                }
             }
             if (cardBox != null) {
-                bboxes.add(cardBox!!)
+                if (isFrontCardFull == true && confidence > 0.5 && classificationResult!!.confidence > 0.7){
+                    greenBoxes.add(cardBox!!)
+                } else {
+                    redBoxes.add(cardBox!!)
+                }
             }
             if (faceBox != null) {
-                bboxes.add(faceBox!!)
+                if (isFrontCardFull == true && confidence > 0.5 && classificationResult!!.confidence > 0.7){
+                    greenBoxes.add(faceBox!!)
+                } else {
+                    redBoxes.add(faceBox!!)
+                }
             }
             if (faceResult != null && faceResult.error == null) {
                 if (faceResult.selfieFace != null) {
-                    faceBBoxes.add(faceResult.selfieFace!!.bbox)
+                    if (faceResult.selfieFace!!.isFrontFacing && faceResult.selfieFace!!.isFullFace && faceResult.selfieFace!!.isGoodSize) {
+                        greenBoxes.add(faceResult.selfieFace!!.bbox)
+                    } else {
+                        redBoxes.add(faceResult.selfieFace!!.bbox)
+                    }
                     val rotX = faceResult.selfieFace!!.rot.rotX
                     val rotY = faceResult.selfieFace!!.rot.rotY
                     val rotZ = faceResult.selfieFace!!.rot.rotZ
+                    val faceWidth = faceResult.selfieFace!!.faceBitmap?.width
+                    val faceHeight = faceResult.selfieFace!!.faceBitmap?.height
                     faceText.text =
-                        "Num: ${faceResult.faceScreeningResults!!.size}, Full: ${faceResult.selfieFace!!.isFullFace}, Front: ${faceResult.selfieFace!!.isFrontFacing} (%.1f, %.1f, %.1f)".format(
-                            rotX, rotY, rotZ
+                        "Stage: ${faceScreeningState.stage} Num: ${faceResult.faceScreeningResults!!.size}, Full: ${faceResult.selfieFace!!.isFullFace}, Front: ${faceResult.selfieFace!!.isFrontFacing} Rot: (%.1f, %.1f, %.1f) Size: %d, %d".format(
+                            rotX, rotY, rotZ, faceWidth, faceHeight
                         )
+
                 } else {
                     faceText.text = ""
                 }
-                if (faceResult.cardFace != null) {
-                    faceBBoxes.add(faceResult.cardFace!!.bbox)
-                }
             }
             boundingBoxOverlay.post{boundingBoxOverlay.drawBounds(
-               bboxes.map{it.transform()},
-                faceBBoxes.map{it.transform()},
+                greenBoxes.map{it.transform()},
+                redBoxes.map{it.transform()},
                 mlBBox,
                 imgProxyRotationDegree)}
         }
