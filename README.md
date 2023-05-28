@@ -124,26 +124,21 @@
       }
       ```
    
-4. (Optional) you can call `oneStageCheckFace` to screen the face action. You can state the stage that you want to perform check by using `state` parameter. The result will contain the following fields
+4. (Optional) you can call `checkFaceAction` to screen the face action. You can state the stage that you want to perform check by using `state` parameter. The result will contain the following fields
    - `stage`: There are stage that determined the current action and status of screening result
    - `timestamp`: The timestamp of captured faces
    - `results`: The face data that is captured when the action is success. This will also contain the bitmap data that capture the frame when that system treated as successful
 
 ```kotlin
-           faceScreeningState.stage = FaceScreeningStage.FRONT
-           Mirai.oneStageCheckFace(result, faceScreeningState) { faceState ->
-               this@MainActivity.displayResult(result, faceScreeningState.curFaceDetectionResult)
-               imageProxy.close()
-               faceScreeningState = faceState
-               if (faceScreeningState.stage == FaceScreeningStage.FAILED) {
-                   faceText.text = "Face screening failed!"
-                   cameraProvider?.unbindAll()
-               }
-               if (faceScreeningState.stage == FaceScreeningStage.SUCCESS && autoCaptFaceSwitch.isChecked) {
-                   imageView.setImageBitmap(faceScreeningState.results[0].faceBitmap)
-                   cameraProvider?.unbindAll()
-               }
-           }
+            Mirai.checkFaceAction(result, faceScreeningState, expectedAction) { faceState ->
+                if (faceScreeningState.stage == FaceScreeningStage.FAILED) {
+                    // Failed
+                }
+                if (faceScreeningState.stage == FaceScreeningStage.FINISH) {
+                    // Success
+
+                }
+            }
 ```
 
 
