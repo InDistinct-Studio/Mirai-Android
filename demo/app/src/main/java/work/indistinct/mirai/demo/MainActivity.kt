@@ -5,9 +5,11 @@ import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.util.Size
 import android.view.MotionEvent
 import android.view.View
 import android.widget.*
+import android.widget.AdapterView.OnItemSelectedListener
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -34,6 +36,7 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
     lateinit var faceText: TextView
     lateinit var faceDetectionSwitch: Switch
     lateinit var autoCaptFaceSwitch: Switch
+    lateinit var faceStageSpinner: Spinner
     lateinit var previewView: PreviewView
     lateinit var boundingBoxOverlay: BoundingBoxOverlay
     lateinit var imageView: ImageView
@@ -53,7 +56,11 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
     private lateinit var cameraExecutor: ExecutorService
 
     private var correctCount: Int = 0
-    private var faceScreeningState: FaceScreeningState = FaceScreeningState()
+    private var faceScreeningState: FaceScreeningState = FaceScreeningState(
+        stage = FaceScreeningStage.FRONT
+    )
+
+    private var selectedFaceAction: FaceScreeningStage = FaceScreeningStage.UP
 
     companion object {
         private const val RATIO_4_3_VALUE = 4.0 / 3.0
@@ -73,6 +80,25 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
         faceText = findViewById(R.id.faceTextView)
         faceDetectionSwitch = findViewById(R.id.faceDetectionSwitch)
         autoCaptFaceSwitch = findViewById(R.id.autoCapFaceSwitch)
+        faceDetectionSwitch.setOnCheckedChangeListener { compoundButton, isChecked ->
+            faceStageSpinner.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+        faceStageSpinner = findViewById(R.id.faceStageSpinner)
+        faceStageSpinner.adapter = ArrayAdapter.createFromResource(this, R.array.face_stages, android.R.layout.simple_spinner_item).also {
+            it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        faceStageSpinner.onItemSelectedListener = object: OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                selectedFaceAction = FaceScreeningStage.values()[pos + 1]
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+            }
+
+        }
+
+
+
         swapCameraButton.setOnClickListener {
             swapCamera()
         }
@@ -94,7 +120,6 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
                 requestPermissions(arrayOf(Manifest.permission.CAMERA), 1000)
             }
         }
-
     }
 
     override fun onCompleted() {
@@ -133,19 +158,19 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
         val screenAspectRatio = aspectRatio(previewWidth, previewHeight)
 
         preview = Preview.Builder()
+            .setTargetResolution(Size(720, 1280))
             .setTargetRotation(rotation)
-            .setTargetAspectRatio(screenAspectRatio)
             .build()
 
 
         imageCapture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-            .setTargetAspectRatio(screenAspectRatio)
+            .setTargetResolution(Size(720, 1280))
             .setTargetRotation(rotation)
             .build()
 
         imageAnalyzer = ImageAnalysis.Builder()
-            .setTargetAspectRatio(screenAspectRatio)
+            .setTargetResolution(Size(720, 1280))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
             .also {
@@ -159,8 +184,7 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
                         val card = CardImage(this.image!!, imageInfo.rotationDegrees)
                         Mirai.scanIDCard(card) { result ->
                             if (faceDetectionSwitch.isChecked) {
-                                faceScreeningState.stage = FaceScreeningStage.FRONT
-                                Mirai.oneStageCheckFace(result, faceScreeningState) { faceState ->
+                                Mirai.checkFaceAction(result, faceScreeningState, selectedFaceAction) { faceState ->
                                     this@MainActivity.displayResult(result, faceScreeningState.curFaceDetectionResult)
                                     imageProxy.close()
                                     faceScreeningState = faceState
@@ -168,7 +192,7 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
                                         faceText.text = "Face screening failed!"
                                         cameraProvider?.unbindAll()
                                     }
-                                    if (faceScreeningState.stage == FaceScreeningStage.SUCCESS && autoCaptFaceSwitch.isChecked) {
+                                    if (faceScreeningState.stage == FaceScreeningStage.FINISH && autoCaptFaceSwitch.isChecked) {
                                         imageView.setImageBitmap(faceScreeningState.results[0].faceBitmap)
                                         cameraProvider?.unbindAll()
                                     }
@@ -277,8 +301,8 @@ class MainActivity : AppCompatActivity(), Mirai.OnInitializedListener {
                     val faceWidth = faceResult.selfieFace!!.faceBitmap?.width
                     val faceHeight = faceResult.selfieFace!!.faceBitmap?.height
                     faceText.text =
-                        "Stage: ${faceScreeningState.stage} Num: ${faceResult.faceScreeningResults!!.size}, Full: ${faceResult.selfieFace!!.isFullFace}, Front: ${faceResult.selfieFace!!.isFrontFacing} Rot: (%.1f, %.1f, %.1f) Size: %d, %d".format(
-                            rotX, rotY, rotZ, faceWidth, faceHeight
+                        "Stage: ${faceScreeningState.stage} Num: ${faceResult.faceScreeningResults!!.size}, Full: ${faceResult.selfieFace!!.isFullFace}, Front: ${faceResult.selfieFace!!.isFrontFacing} (%.1f, %.1f, %.1f) Face Size: %d, %d (%d, %d)".format(
+                            rotX, rotY, rotZ, faceWidth, faceHeight, result.fullImage?.width ?: -1, result.fullImage?.height ?: -1
                         )
 
                 } else {
