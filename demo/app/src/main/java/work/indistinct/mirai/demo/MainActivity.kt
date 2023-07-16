@@ -35,7 +35,6 @@ class MainActivity : ComponentActivity() {
                     viewState = viewModel.viewState.value
                 )
             }
-//            ekycWithIdCardGraph(navController)
         }
     }
 

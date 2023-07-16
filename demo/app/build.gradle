@@ -52,6 +52,12 @@ dependencies {
     implementation composeBom
     androidTestImplementation composeBom
 
+    implementation "androidx.camera:camera-lifecycle:1.2.3"
+    implementation "androidx.camera:camera-video:1.2.3"
+    implementation "androidx.camera:camera-view:1.2.3"
+    implementation "androidx.camera:camera-extensions:1.2.3"
+    implementation "com.google.accompanist:accompanist-permissions:0.31.5-beta"
+
     implementation 'androidx.compose.material3:material3'
 
     implementation 'androidx.compose.ui:ui-tooling-preview'
