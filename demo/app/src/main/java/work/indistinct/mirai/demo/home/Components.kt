@@ -38,7 +38,7 @@ fun HomeScreen(
                 when (viewState.status) {
                     HomeViewState.MiraiStatus.Ready -> {
                         MainMenu(onClick = { mode ->
-
+                            navController.navigate("idCard")
                         })
                     }
                     is HomeViewState.MiraiStatus.Error -> {
