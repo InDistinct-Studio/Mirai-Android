@@ -7,6 +7,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -47,10 +48,10 @@ fun AppBar(
     }
 }
 
-@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CameraView(
-    analyzeImage: (ImageProxy) -> Unit
+    analyzeImage: (ImageProxy) -> Unit,
+    overlay: (@Composable () -> Unit)?,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -95,6 +96,7 @@ fun CameraView(
             },
             modifier = Modifier.fillMaxSize()
         )
+        overlay?.invoke()
     }
 }
 

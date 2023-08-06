@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
                 composable("captureCard") {
                     val viewModel = viewModel<CaptureCardViewModel>()
                     CaptureCardScreen(navController,
+                        viewModel::startCapture,
                         viewModel::resetResult,
                         viewModel::setCaptureResult,
                         viewModel.viewState.value,
