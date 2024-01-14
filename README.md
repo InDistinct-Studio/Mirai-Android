@@ -5,14 +5,13 @@
 
 ## Prerequisite
 
-- Android SDK Version 21 or Higher
+- Android SDK Version 24 or Higher
 - Google Play Services
 - `Internet` and `Camera` Permissions in Manfiest
 
 ## Installation Guide
 
 - Add this to your `build.gradle` at the root of the project
-
   ```
 	allprojects {
 		repositories {
@@ -31,6 +30,8 @@
 - Sync your gradle project and Mirai is now available for your application
 
 ## HOW-TO
+
+### Card Detection
 
 1. Initialize SDK by calling `init` function with your API Key. Also, you will also need to implement `Mirai.OnInitializedListener` to check whether the initialization is completed or not
 
@@ -75,254 +76,31 @@
       - `confidence`: A confidence value from 0 to 1. Higher values mean the images are more likely to be good quality. The threshold of `0.6` to `0.9` is recommended. 
       - `error`: An object for error messages.
 
-    ```kotlin
-    private fun displayResult(result: IDCardResult) {
-          result.error?.run {
-              resultText.text = errorMessage
-          }
-          boundingBoxOverlay.post{boundingBoxOverlay.clearBounds()}
-          val bboxes: MutableList<Rect> = mutableListOf()
-          var mlBBox: Rect? = null
-          result.run {
-              // fullImage is always available.
-              val capturedImage = fullImage
-  
-              confidenceText.text = "%.3f ".format(confidence)
-              if (this.detectResult != null) {
-                  confidenceText.text = "%.3f (%.3f) (%.3f)".format(
-                      confidence,
-                      this.detectResult!!.mlConfidence,
-                      this.detectResult!!.boxConfidence)
-                  if (this.detectResult!!.cardBoundingBox != null) {
-                      mlBBox = this.detectResult!!.cardBoundingBox!!.transform()
-                  }
-              }
-              if (isFrontSide != null && isFrontSide as Boolean) {
-                  // cropped image is only available for front side scan result.
-                  val cardImage = croppedImage
-                  confidenceText.text = "%s, Full: %s".format(confidenceText.text, isFrontCardFull)
-  
-                  if (classificationResult != null && classificationResult!!.error == null) {
-                      confidenceText.text = "%s (%.3f)".format(confidenceText.text, classificationResult!!.confidence)
-                  }
-              }
-  
-              if (texts != null) {
-                  resultText.text = "TEXTS -> ${texts!!.joinToString("\n")}, isFrontside -> $isFrontSide"
-              } else {
-                  resultText.text = "TEXTS -> NULL, isFrontside -> $isFrontSide"
-              }
-              if (idBBoxes != null) {
-                  bboxes.addAll(idBBoxes!!)
-              }
-              if (cardBox != null) {
-                  bboxes.add(cardBox!!)
-              }
-              boundingBoxOverlay.post{boundingBoxOverlay.drawBounds(
-                 bboxes.map{it.transform()}, mlBBox)}
-          }
-      }
-      ```
-   
-4. (Optional) you can call `checkFaceAction` to screen the face action. You can state the stage that you want to perform check by using `state` parameter. The result will contain the following fields
-   - `stage`: There are stage that determined the current action and status of screening result
-   - `timestamp`: The timestamp of captured faces
-   - `results`: The face data that is captured when the action is success. This will also contain the bitmap data that capture the frame when that system treated as successful
+### Face Action Screening
+
+1. Same as Card Detection setup, you need to cal `init` function with your API Key but you will need to specify "face-actions" option to enable this feature.
 
 ```kotlin
-            Mirai.checkFaceAction(result, faceScreeningState, expectedAction) { faceState ->
-                if (faceScreeningState.stage == FaceScreeningStage.FAILED) {
-                    // Failed
-                }
-                if (faceScreeningState.stage == FaceScreeningStage.FINISH) {
-                    // Success
-
-                }
-            }
+    Mirai.init(this, "API_KEY", options = listOf("face-actions"), listener)
 ```
 
+2. Before you can use Face Actions Screening, you need to call `initFaceScreeningState` to initialize the whole process.
 
-### Example Code
+3. To use face screening, you just need to call `twoStageCheckFace` function. This function will return `FaceScreeningState` object which will show all the state of screening state. Here are some parameters that you should know
+    - `stage` - represent the current stage of screening process. Here are all possible stages
+        - `FaceScreeningStage.FRONT` - The stage to check for staright face
+        - `FaceScreeningStage.LEFT` - The stage to check the turning left face
+        - `FaceScreeningStage.RIGHT` - The stage to check the turning left right
+        - `FaceScreeningStage.UP` - The stage to check the turning face up
+        - `FaceScreeningStage.DOWN` - The stage to check the turning face down
+        - `FaceScreeningStage.BLINK` - The stage to check for blinking 
+        - `FaceScreeningStage.MOUTHOPEN` - The stage to check face with mouth opening
+        - `FaceScreeningStage.FINISH` - The stage that concluded the process and screening successfully
+        - `FaceScreeningStage.FAILED` - The stage that indicate that face screening is failed.
+    - `results` - list of `FaceScreeningResult` which contain the captured face data.
 
-```kotlin
-@androidx.camera.core.ExperimentalGetImage
-class MainActivity : AppCompatActivity() {
+    The process will start screening in 2 steps. First, it will try to find the user's straight face. This is to setup and calibrate the alogrithm for action screening. This will start automatically when you start calling this function.
 
-    lateinit var resultText: TextView
-    lateinit var confidenceText: TextView
+4. After first step is done, SDK will update `stage` parameter from `FaceScreeningStage.FRONT` to stage with input action (`expectedAction`). For example, If you set `expectedAction` as blink action, it will return `FaceScreeningStage.BLINK` after the first stage is done. To start verify the next action, you need to call `initFaceScreeningSecondStage`. 
 
-    private var preview: Preview? = null
-    private var imageCapture: ImageCapture? = null
-    private var imageAnalyzer: ImageAnalysis? = null
-    private var camera: Camera? = null
-    private var cameraProvider: ProcessCameraProvider? = null
-
-    private var previewWidth: Int = 1
-    private var previewHeight: Int = 1
-    private var imgProxyWidth: Int = 1
-    private var imgProxyHeight: Int = 1
-    private lateinit var cameraExecutor: ExecutorService
-
-    companion object {
-        private const val RATIO_4_3_VALUE = 4.0 / 3.0
-        private const val RATIO_16_9_VALUE = 16.0 / 9.0
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        Mirai.init(this, "68OvRGckCYiElYRqMqv7")
-
-        resultText = findViewById(R.id.resultTextView)
-        confidenceText = findViewById(R.id.confidenceTextView)
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                requestPermissions(arrayOf(Manifest.permission.CAMERA), 1000)
-            }
-        }
-
-        cameraExecutor = Executors.newSingleThreadExecutor()
-        setupCamera()
-    }
-
-    private fun setupCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            // CameraProvider
-            cameraProvider = cameraProviderFuture.get()
-
-            // Build and bind the camera use cases
-            bindCameraUseCases()
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun bindCameraUseCases() {
-        val cameraSelector = CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_BACK).build()
-
-        val metrics = DisplayMetrics().also { previewView.display.getRealMetrics(it) }
-
-        val screenAspectRatio = aspectRatio(metrics.widthPixels, metrics.heightPixels)
-
-        val rotation = previewView.display.rotation
-
-//        val previewChild = previewView.getChildAt(0)
-        previewWidth = (previewView.width * previewView.scaleX).toInt()
-        previewHeight = (previewView.height * previewView.scaleY).toInt()
-
-        preview = Preview.Builder()
-            .setTargetRotation(rotation)
-            .build()
-
-        imageCapture = ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-            .setTargetAspectRatio(screenAspectRatio)
-            .setTargetRotation(rotation)
-            .build()
-
-        imageAnalyzer = ImageAnalysis.Builder()
-            .setTargetAspectRatio(screenAspectRatio)
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .build()
-            .also {
-                it.setAnalyzer(cameraExecutor) { imageProxy ->
-
-                    imageProxy.run {
-                        val reverseDimens = imageInfo.rotationDegrees == 90 || imageInfo.rotationDegrees == 270
-                        imgProxyWidth = if (reverseDimens) imageProxy.height else imageProxy.width
-                        imgProxyHeight = if (reverseDimens) imageProxy.width else imageProxy.height
-                        val card = CardImage(this.image!!, imageInfo.rotationDegrees)
-                        Mirai.scanIDCard(card) {result ->
-                            this@MainActivity.displayResult(result)
-                            imageProxy.close()
-                        }
-                    }
-                }
-            }
-
-        cameraProvider?.unbindAll()
-
-        try {
-            // A variable number of use-cases can be passed here -
-            // camera provides access to CameraControl & CameraInfo
-            camera = cameraProvider?.bindToLifecycle(
-                this, cameraSelector, preview, imageAnalyzer)
-
-            // Attach the viewfinder's surface provider to preview use case
-            preview?.setSurfaceProvider(previewView.surfaceProvider)
-        } catch (exc: Exception) {
-        }
-    }
-
-    private fun displayResult(result: IDCardResult) {
-        result.error?.run {
-            resultText.text = errorMessage
-        }
-        boundingBoxOverlay.post{boundingBoxOverlay.clearBounds()}
-        val bboxes: MutableList<Rect> = mutableListOf()
-        var mlBBox: Rect? = null
-        result.run {
-            // fullImage is always available.
-            val capturedImage = fullImage
-
-            confidenceText.text = "%.3f ".format(confidence)
-            if (this.detectResult != null) {
-                confidenceText.text = "%.3f (%.3f) (%.3f)".format(
-                    confidence,
-                    this.detectResult!!.mlConfidence,
-                    this.detectResult!!.boxConfidence)
-                if (this.detectResult!!.cardBoundingBox != null) {
-                    mlBBox = this.detectResult!!.cardBoundingBox!!.transform()
-                }
-            }
-            if (isFrontSide != null && isFrontSide as Boolean) {
-                // cropped image is only available for front side scan result.
-                val cardImage = croppedImage
-                confidenceText.text = "%s, Full: %s".format(confidenceText.text, isFrontCardFull)
-
-                if (classificationResult != null && classificationResult!!.error == null) {
-                    confidenceText.text = "%s (%.3f)".format(confidenceText.text, classificationResult!!.confidence)
-                }
-            }
-
-            if (texts != null) {
-                resultText.text = "TEXTS -> ${texts!!.joinToString("\n")}, isFrontside -> $isFrontSide"
-            } else {
-                resultText.text = "TEXTS -> NULL, isFrontside -> $isFrontSide"
-            }
-            if (idBBoxes != null) {
-                bboxes.addAll(idBBoxes!!)
-            }
-            if (cardBox != null) {
-                bboxes.add(cardBox!!)
-            }
-            boundingBoxOverlay.post{boundingBoxOverlay.drawBounds(
-               bboxes.map{it.transform()}, mlBBox)}
-        }
-    }
-
-    private fun aspectRatio(width: Int, height: Int): Int {
-        val previewRatio = max(width, height).toDouble() / min(width, height)
-        if (abs(previewRatio - RATIO_4_3_VALUE) <= abs(previewRatio - RATIO_16_9_VALUE)) {
-            return AspectRatio.RATIO_4_3
-        }
-        return AspectRatio.RATIO_16_9
-    }
-
-
-    private fun Rect.transform(): Rect {
-        val scaleX = previewWidth / imgProxyWidth.toFloat()
-        val scaleY = previewHeight / imgProxyHeight.toFloat()
-
-        val flippedLeft = left
-        val flippedRight = right
-        // Scale all coordinates to match preview
-        val scaledLeft = scaleX * flippedLeft
-        val scaledTop = scaleY * top
-        val scaledRight = scaleX * flippedRight
-        val scaledBottom = scaleY * bottom
-        return Rect(scaledLeft.toInt(), scaledTop.toInt(), scaledRight.toInt(), scaledBottom.toInt())
-    }
-}
-
-```
+5. After the process is done, the `stage` will change `FaceScreeningStage.FINISH` and you can get all the face results from `results` parameter.
