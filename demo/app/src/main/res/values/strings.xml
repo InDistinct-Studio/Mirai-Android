@@ -1,3 +1,15 @@
 <resources>
     <string name="app_name">MiraiDemo</string>
+
+    <string-array name="face_stages">
+        <!--        <item>Front</item>-->
+        <item>Up</item>
+        <item>Down</item>
+        <item>Right</item>
+        <item>Left</item>
+        <item>Blink</item>
+        <item>MouthOpen</item>
+        <item>Up_Down</item>
+        <item>Left_Right</item>
+    </string-array>
 </resources>
