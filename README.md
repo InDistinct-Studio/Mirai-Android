@@ -97,7 +97,8 @@
         - `FaceScreeningStage.MOUTHOPEN` - The stage to check face with mouth opening
         - `FaceScreeningStage.FINISH` - The stage that concluded the process and screening successfully
         - `FaceScreeningStage.FAILED` - The stage that indicate that face screening is failed.
-    - `results` - list of `FaceScreeningResult` which contain the captured face data.
+    - `results` - list of `FaceScreeningResult` which contain the captured face data. Here are information about face that you can use.
+        - `curFaceDetectionResult` - The result of face detection image. This will contain data related to captured face image e.g. image size, face rotation, and etc.
 
     The process will start screening in 2 steps. First, it will try to find the user's straight face. This is to setup and calibrate the alogrithm for action screening. This will start automatically when you start calling this function.
 

@@ -43,7 +43,7 @@ android {
 dependencies {
     implementation fileTree(dir: "libs", include: ["*.jar"])
 
-    implementation 'com.github.InDistinct-Studio:mirai-android:3.0.2'
+    implementation 'com.github.InDistinct-Studio:mirai-android:3.0.3'
 
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     implementation 'androidx.core:core-ktx:1.10.1'
