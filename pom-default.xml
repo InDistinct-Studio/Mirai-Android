@@ -9,11 +9,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>work.indistinct</groupId>
   <artifactId>mirai</artifactId>
-<<<<<<< Updated upstream
-  <version>3.0.2</version>
-=======
   <version>3.0.3</version>
->>>>>>> Stashed changes
   <packaging>aar</packaging>
   <dependencies>
     <dependency>
